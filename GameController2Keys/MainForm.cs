@@ -12,11 +12,10 @@ namespace GameController2Keys
 
         public MainForm()
         {
-            Debug.WriteLine("MainForm constructor");
             notifyIcon = new NotifyIcon();
             notifyIcon.Visible = true;
             notifyIcon.Text = "GameController2Keys";
-            notifyIcon.Icon = new Icon("32x32.ico");
+            notifyIcon.Icon = new Icon("32.ico");
             notifyIcon.MouseDoubleClick += notifyIcon_MouseDoubleClick;
             notifyIcon.ContextMenu = new ContextMenu(new MenuItem[] { new MenuItem("Exit", exit_MouseClick) });
         }

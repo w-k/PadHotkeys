@@ -1,4 +1,3 @@
-
 namespace GameController2Keys
 {
     internal class Row

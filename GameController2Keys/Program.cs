@@ -1,11 +1,9 @@
 ﻿using CsvHelper;
-using CsvHelper.Configuration;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -20,49 +18,45 @@ namespace GameController2Keys
 {
     partial class Program
     {
-        public static Dictionary<Tuple<String, String>, String> Combinations = 
-            new Dictionary<Tuple<string,string>,string>();
-        private static string config;
+        public static Dictionary<Tuple<String, String>, String> Combinations =
+            new Dictionary<Tuple<string, string>, string>();
 
         [DllImport("user32.dll", CharSet = CharSet.Auto, CallingConvention = CallingConvention.StdCall)]
         public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint cButtons, uint dwExtraInfo);
 
-        private const int LeftDown = 0x02;
-        private const int LeftUp = 0x04;
-        private const int RightDown = 0x08;
-        private const int RightUp = 0x10;
-        private const int MiddleDown = 0x00000020;
-        private const int MiddleUp = 0x00000040;
         private const int Wheel = 0x800;
 
-        public static void LeftClick()
+        private static class Mouse
         {
-            int X = Cursor.Position.X;
-            int Y = Cursor.Position.Y;
-            mouse_event(LeftDown | LeftUp, (uint)X, (uint)Y, 0, 0);
-        }
+            private static Dictionary<VirtualKeyCode, uint> DownEvents = new Dictionary<VirtualKeyCode, uint>
+            {
+                {VirtualKeyCode.LBUTTON, 0x02},
+                {VirtualKeyCode.RBUTTON, 0x08},
+                {VirtualKeyCode.MBUTTON, 0x00000020},
+            };
 
-        public static void LeftPress()
-        {
-            int X = Cursor.Position.X;
-            int Y = Cursor.Position.Y;
-            mouse_event(LeftDown, (uint)X, (uint)Y, 0, 0);
-            Console.WriteLine("Left mouse pressed");
-        }
+            private static Dictionary<VirtualKeyCode, uint> UpEvents = new Dictionary<VirtualKeyCode, uint>
+            {
+                {VirtualKeyCode.LBUTTON, 0x04},
+                {VirtualKeyCode.RBUTTON, 0x10},
+                {VirtualKeyCode.MBUTTON, 0x00000040},
+            };
 
-        public static void LeftRelease()
-        {
-            int X = Cursor.Position.X;
-            int Y = Cursor.Position.Y;
-            mouse_event(LeftUp, (uint)X, (uint)Y, 0, 0);
-            Console.WriteLine("Left mouse released");
-        }
+            public static void Press(VirtualKeyCode code)
+            {
+                var X = Cursor.Position.X;
+                var Y = Cursor.Position.Y;
+                var mouseEvent = DownEvents[code];
+                mouse_event(mouseEvent, (uint)X, (uint)Y, 0, 0);
+            }
 
-        public static void MiddleClick()
-        {
-            int X = Cursor.Position.X;
-            int Y = Cursor.Position.Y;
-            mouse_event(MiddleDown | MiddleUp, (uint)X, (uint)Y, 0, 0);
+            public static void Release(VirtualKeyCode code)
+            {
+                var X = Cursor.Position.X;
+                var Y = Cursor.Position.Y;
+                var mouseEvent = UpEvents[code];
+                mouse_event(mouseEvent, (uint)X, (uint)Y, 0, 0);
+            }
         }
 
         public static void Scroll(float stickY)
@@ -72,7 +66,15 @@ namespace GameController2Keys
 
         private static KeyboardSimulator simulator = new KeyboardSimulator(new InputSimulator());
 
-        
+        private static List<VirtualKeyCode> mouseCodes = new List<VirtualKeyCode>
+        {
+            VirtualKeyCode.LBUTTON,
+            VirtualKeyCode.RBUTTON,
+            VirtualKeyCode.MBUTTON,
+            VirtualKeyCode.XBUTTON1,
+            VirtualKeyCode.XBUTTON1
+        };
+
         public static void KeepCheckingState()
         {
             var previousPressedButtons = new List<String>();
@@ -81,7 +83,6 @@ namespace GameController2Keys
             var down = new List<String>();
             string action;
             bool shouldStop = false;
-
             while (!shouldStop)
             {
                 var gamePadState = GamePad.GetState(PlayerIndex.One);
@@ -108,19 +109,15 @@ namespace GameController2Keys
                 buttonStates.Add("Up", gamePadState.DPad.Up);
                 buttonStates.Add("Left", gamePadState.DPad.Left);
                 buttonStates.Add("Right", gamePadState.DPad.Right);
-
                 List<String> pressedButtons = (from state in buttonStates
                                                where state.Value == XnaInput.ButtonState.Pressed
                                                select state.Key).ToList();
-
                 if (pressedButtons.Contains("Back"))
                     shouldStop = true;
-
                 justPressed = pressedButtons.Except(previousPressedButtons).ToList();
                 justReleased = previousPressedButtons.Except(pressedButtons).ToList();
                 down = down.Except(justReleased).ToList();
                 down.AddRange(justPressed);
-
                 if (rightX != 0 || rightY != 0)
                 {
                     Cursor.Position = new System.Drawing.Point(
@@ -131,7 +128,6 @@ namespace GameController2Keys
                 {
                     Scroll(leftY * 10);
                 }
-
                 var mouseActions = new List<String>() { "LeftShoulder", "RightShoulder" };
                 var pressedMouseButtons = justPressed.Intersect(mouseActions).ToList();
                 var releasedMouseButtons = justReleased.Intersect(mouseActions).ToList();
@@ -143,7 +139,6 @@ namespace GameController2Keys
 
                     action = "";
                     var trigger = Tuple.Create(triggerModifiers, triggerKey);
-                    Console.WriteLine("Trigger: " + String.Join(" ", trigger.Item1) + " + " + trigger.Item2);
                     if (Combinations.TryGetValue(trigger, out action))
                     {
                         var _action = ParseKeysString(action);
@@ -159,54 +154,43 @@ namespace GameController2Keys
                                 modifierCodes.Add(modifierCode);
                             }
                         }
-
                         VirtualKeyCode actionCode;
                         if (codes.TryGetValue(actionKey, out actionCode))
                         {
-                            if (modifierCodes.Count() > 0)
+                            if (mouseCodes.Contains(actionCode))
                             {
-                                simulator.ModifiedKeyStroke(modifierCodes, actionCode);
-                                Console.WriteLine(
-                                    "ModifiedKeyStroke: " +
-                                    string.Join(" ", modifierCodes.Select(x => x.ToString())) + " + " + actionCode);
+                                Mouse.Press(actionCode);
                             }
                             else
                             {
-                                simulator.KeyPress(actionCode);
-                                Console.WriteLine("KeyPress: " + actionCode);
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (pressedMouseButtons.Count() > 0)
-                        {
-                            switch (pressedMouseButtons[0])
-                            {
-                                case "LeftShoulder":
-                                    LeftPress();
-                                    break;
-
-                                case "RightShoulder":
-                                    MiddleClick();
-                                    break;
+                                if (modifierCodes.Count() > 0)
+                                {
+                                    simulator.ModifiedKeyStroke(modifierCodes, actionCode);
+                                }
+                                else
+                                {
+                                    simulator.KeyPress(actionCode);
+                                }
                             }
                         }
                     }
                 }
                 if (justReleased.Count() > 0)
                 {
-                    if (releasedMouseButtons.Count() > 0)
+                    var triggerKey = justReleased[0];
+                    action = "";
+                    var trigger = Tuple.Create(string.Empty, triggerKey);
+                    if (Combinations.TryGetValue(trigger, out action))
                     {
-                        switch (releasedMouseButtons[0])
+                        var _action = ParseKeysString(action);
+                        var actionKey = _action.Item2;
+                        VirtualKeyCode actionCode;
+                        if (codes.TryGetValue(actionKey, out actionCode) && mouseCodes.Contains(actionCode))
                         {
-                            case "LeftShoulder":
-                                LeftRelease();
-                                break;
+                            Mouse.Release(actionCode);
                         }
                     }
                 }
-
                 previousPressedButtons = pressedButtons;
                 Thread.Sleep(10);
             }
@@ -251,13 +235,11 @@ namespace GameController2Keys
 
         private static void OnChanged(object source, FileSystemEventArgs e)
         {
-            Debug.WriteLine("OnChanged");
             Combinations = ReadCombinations(ConfigPath);
         }
 
         private static void OnRenamed(object source, RenamedEventArgs e)
         {
-            Debug.WriteLine("OnRenamed");
             Combinations = ReadCombinations(ConfigPath);
         }
 
@@ -266,7 +248,7 @@ namespace GameController2Keys
             var watcher = new FileSystemWatcher
             {
                 Path = Environment.ExpandEnvironmentVariables(@"%USERPROFILE%"),
-                //Filter = ".XKeys",
+                Filter = ".XKeys",
                 //NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName
             };
             watcher.Changed += new FileSystemEventHandler(OnChanged);
@@ -274,8 +256,7 @@ namespace GameController2Keys
             watcher.Deleted += new FileSystemEventHandler(OnChanged);
             watcher.Renamed += new RenamedEventHandler(OnRenamed);
             watcher.EnableRaisingEvents = true;
-            Debug.WriteLine(string.Format("watcher path: {0}", watcher.Path));
-            if(File.Exists(ConfigPath)) Combinations = ReadCombinations(ConfigPath);
+            if (File.Exists(ConfigPath)) Combinations = ReadCombinations(ConfigPath);
             var gamePadThread = new Thread(new ThreadStart(KeepCheckingState));
             gamePadThread.Start();
             Application.Run(new MainForm());
