@@ -4,7 +4,7 @@ using WindowsInput.Native;
 
 namespace GameController2Keys
 {
-    partial class Program
+    public partial class Program
     {
         private static Dictionary<String, VirtualKeyCode> codes = new Dictionary<String, VirtualKeyCode>() {
             { "lbutton", VirtualKeyCode.LBUTTON },

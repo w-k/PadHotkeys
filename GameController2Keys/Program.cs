@@ -11,12 +11,11 @@ using System.Threading;
 using System.Windows.Forms;
 using WindowsInput;
 using WindowsInput.Native;
-
 using XnaInput = Microsoft.Xna.Framework.Input;
 
 namespace GameController2Keys
 {
-    partial class Program
+    public partial class Program
     {
         public static Dictionary<Tuple<String, String>, String> Combinations =
             new Dictionary<Tuple<string, string>, string>();
@@ -201,9 +200,11 @@ namespace GameController2Keys
             using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             using (var reader = new StreamReader(stream))
             {
+                
                 var csv = new CsvReader(reader);
                 csv.Configuration.Delimiter = "::";
                 csv.Configuration.HasHeaderRecord = false;
+                csv.Configuration.AllowComments = true;
                 csv.Configuration.RegisterClassMap<RowMap>();
                 var rows = csv.GetRecords<Row>().ToList();
                 var trigger = ParseKeysString(rows[0].Trigger);
@@ -230,7 +231,7 @@ namespace GameController2Keys
                 return Tuple.Create("", trigger.Trim());
             }
         }
-
+           
         public static string ConfigPath = Environment.ExpandEnvironmentVariables(@"%USERPROFILE%\.XKeys");
 
         private static void OnChanged(object source, FileSystemEventArgs e)

@@ -27,7 +27,7 @@ namespace GameController2Keys
 
         private void notifyIcon_MouseDoubleClick(object sender, MouseEventArgs e)
         {
-            if (!File.Exists(Program.ConfigPath)) File.Create(Program.ConfigPath).Close();
+            if (!File.Exists(Program.ConfigPath)) File.Copy("default.config", Program.ConfigPath);
             Process.Start("notepad.exe", Program.ConfigPath);
         }
 
