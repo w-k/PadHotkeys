@@ -4,9 +4,9 @@ using WindowsInput.Native;
 
 namespace PadHotkeys
 {
-    public partial class Program
+    public class KeyCodes
     {
-        private static Dictionary<String, VirtualKeyCode> codes = new Dictionary<String, VirtualKeyCode>() {
+        public static Dictionary<String, VirtualKeyCode> Map = new Dictionary<String, VirtualKeyCode>() {
             { "lbutton", VirtualKeyCode.LBUTTON },
             { "rbutton", VirtualKeyCode.RBUTTON },
             { "cancel", VirtualKeyCode.CANCEL },

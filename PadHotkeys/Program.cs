@@ -1,16 +1,11 @@
-﻿using CsvHelper;
-using Microsoft.Xna.Framework;
+﻿using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Forms;
-using WindowsInput;
-using WindowsInput.Native;
 using XnaInput = Microsoft.Xna.Framework.Input;
 
 namespace PadHotkeys
@@ -20,67 +15,13 @@ namespace PadHotkeys
         public static Dictionary<Tuple<String, String>, String> Combinations =
             new Dictionary<Tuple<string, string>, string>();
 
-        [DllImport("user32.dll", CharSet = CharSet.Auto, CallingConvention = CallingConvention.StdCall)]
-        public static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint cButtons, uint dwExtraInfo);
-
-        private const int Wheel = 0x800;
-
-        private static class Mouse
-        {
-            private static Dictionary<VirtualKeyCode, uint> DownEvents = new Dictionary<VirtualKeyCode, uint>
-            {
-                {VirtualKeyCode.LBUTTON, 0x02},
-                {VirtualKeyCode.RBUTTON, 0x08},
-                {VirtualKeyCode.MBUTTON, 0x00000020},
-            };
-
-            private static Dictionary<VirtualKeyCode, uint> UpEvents = new Dictionary<VirtualKeyCode, uint>
-            {
-                {VirtualKeyCode.LBUTTON, 0x04},
-                {VirtualKeyCode.RBUTTON, 0x10},
-                {VirtualKeyCode.MBUTTON, 0x00000040},
-            };
-
-            public static void Press(VirtualKeyCode code)
-            {
-                var X = Cursor.Position.X;
-                var Y = Cursor.Position.Y;
-                var mouseEvent = DownEvents[code];
-                mouse_event(mouseEvent, (uint)X, (uint)Y, 0, 0);
-            }
-
-            public static void Release(VirtualKeyCode code)
-            {
-                var X = Cursor.Position.X;
-                var Y = Cursor.Position.Y;
-                var mouseEvent = UpEvents[code];
-                mouse_event(mouseEvent, (uint)X, (uint)Y, 0, 0);
-            }
-        }
-
-        public static void Scroll(float stickY)
-        {
-            mouse_event(Wheel, 0, 0, (uint)stickY, 0);
-        }
-
-        private static KeyboardSimulator simulator = new KeyboardSimulator(new InputSimulator());
-
-        private static List<VirtualKeyCode> mouseCodes = new List<VirtualKeyCode>
-        {
-            VirtualKeyCode.LBUTTON,
-            VirtualKeyCode.RBUTTON,
-            VirtualKeyCode.MBUTTON,
-            VirtualKeyCode.XBUTTON1,
-            VirtualKeyCode.XBUTTON1
-        };
-
         public static void KeepCheckingState()
         {
             var previousPressedButtons = new List<String>();
             var justPressed = new List<String>();
             var justReleased = new List<String>();
             var down = new List<String>();
-            string action;
+            string actionDefinition;
             bool shouldStop = false;
             while (!shouldStop)
             {
@@ -125,7 +66,7 @@ namespace PadHotkeys
                 }
                 if (leftY != 0)
                 {
-                    Scroll(leftY * 10);
+                    Mouse.Scroll(leftY * 10);
                 }
                 var mouseActions = new List<String>() { "LeftShoulder", "RightShoulder" };
                 var pressedMouseButtons = justPressed.Intersect(mouseActions).ToList();
@@ -136,58 +77,25 @@ namespace PadHotkeys
                     var triggerModifiers = string.Join(" ", previousPressedButtons);
                     var triggerKey = justPressed[0];
 
-                    action = "";
+                    actionDefinition = "";
                     var trigger = Tuple.Create(triggerModifiers, triggerKey);
-                    if (Combinations.TryGetValue(trigger, out action))
+                    if (Combinations.TryGetValue(trigger, out actionDefinition))
                     {
-                        var _action = ParseKeysString(action);
-                        var actionModifiers = _action.Item1.Split(' ');
-                        var actionKey = _action.Item2;
-
-                        VirtualKeyCode modifierCode;
-                        var modifierCodes = new List<VirtualKeyCode>();
-                        foreach (var modifier in actionModifiers)
-                        {
-                            if (codes.TryGetValue(modifier, out modifierCode))
-                            {
-                                modifierCodes.Add(modifierCode);
-                            }
-                        }
-                        VirtualKeyCode actionCode;
-                        if (codes.TryGetValue(actionKey, out actionCode))
-                        {
-                            if (mouseCodes.Contains(actionCode))
-                            {
-                                Mouse.Press(actionCode);
-                            }
-                            else
-                            {
-                                if (modifierCodes.Count() > 0)
-                                {
-                                    simulator.ModifiedKeyStroke(modifierCodes, actionCode);
-                                }
-                                else
-                                {
-                                    simulator.KeyPress(actionCode);
-                                }
-                            }
-                        }
+                        Action action;
+                        if (Action.Parse(actionDefinition, out action))
+                            action.OnPress();
                     }
                 }
                 if (justReleased.Count() > 0)
                 {
                     var triggerKey = justReleased[0];
-                    action = "";
+                    actionDefinition = "";
                     var trigger = Tuple.Create(string.Empty, triggerKey);
-                    if (Combinations.TryGetValue(trigger, out action))
+                    if (Combinations.TryGetValue(trigger, out actionDefinition))
                     {
-                        var _action = ParseKeysString(action);
-                        var actionKey = _action.Item2;
-                        VirtualKeyCode actionCode;
-                        if (codes.TryGetValue(actionKey, out actionCode) && mouseCodes.Contains(actionCode))
-                        {
-                            Mouse.Release(actionCode);
-                        }
+                        Action action;
+                        if (Action.Parse(actionDefinition, out action))
+                            action.OnRelease();
                     }
                 }
                 previousPressedButtons = pressedButtons;
@@ -200,37 +108,29 @@ namespace PadHotkeys
             using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
             using (var reader = new StreamReader(stream))
             {
-                
-                var csv = new CsvReader(reader);
-                csv.Configuration.Delimiter = "::";
-                csv.Configuration.HasHeaderRecord = false;
-                csv.Configuration.AllowComments = true;
-                csv.Configuration.RegisterClassMap<RowMap>();
-                var rows = csv.GetRecords<Row>().ToList();
-                var trigger = ParseKeysString(rows[0].Trigger);
+                var rows = new List<Row>();
+                while(true)
+                {
+                    var line = reader.ReadLine();
+                    if (line == null)
+                        break;
+                    if (line.Trim().First() == '#' || string.IsNullOrWhiteSpace(line))
+                        continue;
+                    var row = new Row();
+                    var delimiterIndex = line.IndexOf("..");
+                    row.Trigger = line.Substring(0, delimiterIndex);
+                    row.Action = line.Substring(delimiterIndex + 2);
+                    rows.Add(row);
+                }
                 var result = new Dictionary<Tuple<String, String>, String>();
                 foreach (var row in rows)
                 {
-                    result.Add(ParseKeysString(row.Trigger), row.Action);
+                    result.Add(Action.ParseKeyCombination(row.Trigger), row.Action);
                 }
                 return result;
             }
         }
 
-        private static Tuple<String, String> ParseKeysString(string trigger)
-        {
-            if (trigger.Contains('+'))
-            {
-                var parts = trigger.Split('+');
-                var modifiers = parts[0].Trim();
-                var key = parts[1].Trim();
-                return Tuple.Create(modifiers, key);
-            }
-            else
-            {
-                return Tuple.Create("", trigger.Trim());
-            }
-        }
            
         public static string ConfigPath = Environment.ExpandEnvironmentVariables(@"%USERPROFILE%\.XKeys");
 
